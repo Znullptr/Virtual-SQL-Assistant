@@ -33,7 +33,7 @@ import openai
 
 # Load env variables
 load_dotenv()
-LOGS_DIR = os.environ.get("LOGS_DIR")
+LOGS_DIR = os.getenv("LOGS_DIR")
 
 os.makedirs(LOGS_DIR, exist_ok=True)
 
@@ -57,18 +57,18 @@ class StreamingCallbackHandler(BaseCallbackHandler):
 
 # Configuration class for application settings
 class Settings:
-    WHISPER_MODEL: str = os.environ.get("WHISPER_MODEL", "base")
-    OPENAI_MODEL: str = os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo")
-    OPENAI_API_KEY: str = os.environ.get("OPENAI_API_KEY")
-    MAX_EXCEL_ROWS: int = int(os.environ.get("MAX_EXCEL_ROWS", "10000"))
-    MAX_SAMPLE_ROWS: int = int(os.environ.get("MAX_SAMPLE_ROWS", "5"))
-    MAX_SAMPLE_COLUMNS: int = int(os.environ.get("MAX_SAMPLE_COLUMNS", "5"))
-    DDL_PATH: str = os.environ.get("DDL_PATH", "Data/ddls.json")
-    TEMPLATE_DIR: str = os.environ.get("TEMPLATE_DIR", "templates")
-    EXAMPLES_PATH: str = os.environ.get("EXAMPLES_PATH", "Data/examples.json")
-    TEMP_DIR: str = os.environ.get("TEMP_DIR", "temp")
-    OPENAI_TEMPERATURE: float = float(os.environ.get("OPENAI_TEMPERATURE", "0.7"))
-    OPENAI_MAX_TOKENS: int = int(os.environ.get("OPENAI_MAX_TOKENS", "1000"))
+    WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "base")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY")
+    MAX_EXCEL_ROWS: int = int(os.getenv("MAX_EXCEL_ROWS", "10000"))
+    MAX_SAMPLE_ROWS: int = int(os.getenv("MAX_SAMPLE_ROWS", "5"))
+    MAX_SAMPLE_COLUMNS: int = int(os.getenv("MAX_SAMPLE_COLUMNS", "5"))
+    DDL_PATH: str = os.getenv("DDL_PATH", "Data/ddls.json")
+    TEMPLATE_DIR: str = os.getenv("TEMPLATE_DIR", "templates")
+    EXAMPLES_PATH: str = os.getenv("EXAMPLES_PATH", "Data/examples.json")
+    TEMP_DIR: str = os.getenv("TEMP_DIR", "temp")
+    OPENAI_TEMPERATURE: float = float(os.getenv("OPENAI_TEMPERATURE", "0.7"))
+    OPENAI_MAX_TOKENS: int = int(os.getenv("OPENAI_MAX_TOKENS", "1000"))
 
 
 @lru_cache()
