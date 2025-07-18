@@ -1,0 +1,81 @@
+{"examples":
+    [
+    {
+        "question": "List all products with a price greater than 100.",
+        "query": "SELECT product_name, listprice FROM products WHERE listprice > 100;"
+    },
+    {
+        "question": "Which products are the most sold overall?",
+        "query": "SELECT TOP 10 oi.product_id, SUM(oi.quantity) AS total_quantity FROM order_items oi JOIN products p ON oi.product_id = p.product_id GROUP BY oi.product_id ORDER BY total_quantity DESC;"
+    },
+    {
+        "question": "Show all orders placed after January 1, 2023.",
+        "query": "SELECT order_id, order_date FROM orders WHERE order_date > '2023-01-01';"
+    },
+    {
+        "question": "Get the list of employees working at the 'Baldwin Bikes' department.",
+        "query": "SELECT s.first_name + ' ' + s.last_name AS staff_name FROM staffs s JOIN stores st ON s.store_id = st.store_id WHERE st.store_name = 'Baldwin Bikes';"
+    },
+    {
+        "question": "Display total revenue per customer.",
+        "query": "SELECT o.customer_id, SUM(oi.quantity * oi.list_price * (1 - oi.discount)) AS total_revenue FROM order_items oi JOIN orders o ON oi.order_id = o.order_id GROUP BY o.customer_id ORDER BY total_revenue DESC;"
+    },
+    {
+        "question": "Find customers who have never placed an order.",
+        "query": "SELECT * FROM customers WHERE customer_id NOT IN (SELECT DISTINCT customer_id FROM orders);"
+    },
+    {
+        "question": "Show the best-selling product.",
+        "query": "SELECT TOP 1 oi.product_id, p.product_name, SUM(oi.quantity) AS total_quantity FROM order_items oi JOIN products p ON oi.product_id = p.product_id GROUP BY oi.product_id, p.product_name ORDER BY total_quantity DESC;"
+    },
+    {
+        "question": "Get the list of departments located in Rowlett city.",
+        "query": "SELECT store_name FROM stores WHERE city = 'Rowlett';"
+    },
+    {
+        "question": "Show the total number of orders placed per month.",
+        "query": "SELECT CAST(YEAR(order_date) AS VARCHAR) + '-' + RIGHT('0' + CAST(MONTH(order_date) AS VARCHAR), 2) AS month, COUNT(*) AS order_count FROM orders GROUP BY YEAR(order_date), MONTH(order_date) ORDER BY month;"
+    },
+    {
+        "question": "Find the most expensive product.",
+        "query": "SELECT TOP 1 product_name, list_price FROM products ORDER BY list_price DESC;"
+    },
+    {
+        "question": "Display the list of customers with their number of orders.",
+        "query": "SELECT c.customer_id, c.first_name + ' ' + c.last_name AS customer_name, COUNT(o.order_id) AS order_count FROM customers c LEFT JOIN orders o ON c.customer_id = o.customer_id GROUP BY c.customer_id, c.first_name, c.last_name;"
+    },
+    {
+        "question": "Show the list of orders with details of purchased products.",
+        "query": "SELECT orders.order_id, products.product_name, order_items.quantity, order_items.list_price FROM orders JOIN order_items ON orders.order_id = order_items.order_id JOIN products ON order_items.product_id = products.product_id;"
+    },
+    {
+        "question": "Display customers who spent more than 5000 in total.",
+        "query": "SELECT c.customer_id, c.first_name + ' ' + c.last_name AS customer_name, SUM(oi.quantity * oi.list_price * (1 - oi.discount)) AS total_spent FROM order_items oi JOIN orders o ON oi.order_id = o.order_id JOIN customers c ON o.customer_id = c.customer_id GROUP BY c.customer_id, c.first_name, c.last_name HAVING SUM(oi.quantity * oi.list_price * (1 - oi.discount)) > 5000 ORDER BY total_spent DESC;"
+    },
+    {
+        "question": "Find the top 3 customers with the most orders.",
+        "query": "SELECT TOP 3 c.customer_id, c.first_name + ' ' + c.last_name AS customer_name, COUNT(o.order_id) AS total_orders FROM orders o JOIN customers c ON o.customer_id = c.customer_id GROUP BY c.customer_id, c.first_name, c.last_name ORDER BY total_orders DESC;"
+    },
+    {
+        "question": "List products with stock quantity less than 10.",
+        "query": "SELECT s.product_id, p.product_name, s.quantity FROM stocks s JOIN products p ON s.product_id = p.product_id WHERE s.quantity < 10;"
+    },
+    {
+        "question": "Show the average product price per category.",
+        "query": "SELECT c.category_name, AVG(p.list_price) AS avg_price FROM products p JOIN categories c ON p.category_id = c.category_id GROUP BY c.category_id, c.category_name;"
+    },
+    {
+        "question": "Find the customer who placed the most expensive order.",
+        "query": "SELECT TOP 1 o.customer_id, SUM(oi.quantity * oi.list_price * (1 - oi.discount)) AS total_order_price FROM order_items oi JOIN orders o ON oi.order_id = o.order_id GROUP BY o.customer_id ORDER BY total_order_price DESC;"
+    },
+    {
+        "question": "List orders that were delivered late.",
+        "query": "SELECT order_date, shipped_date, required_date FROM orders WHERE shipped_date > required_date;"
+    },
+    {
+        "question": "Display employees with their total number of sales.",
+        "query": "SELECT s.staff_id, s.first_name + ' ' + s.last_name AS staff_name, COUNT(o.order_id) AS total_sales FROM staffs s JOIN orders o ON s.staff_id = o.staff_id GROUP BY s.staff_id, s.first_name, s.last_name;"
+    }
+    ]
+
+}

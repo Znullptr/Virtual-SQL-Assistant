@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./Backend  
+      dockerfile: Dockerfile
+    container_name: chatbot-backend
+    ports:
+      - "8001:8001"  
+    volumes:
+      - ./backend:/app
+    restart: unless-stopped
+    networks:
+      - chatbot-network
+
+  frontend:
+    build:
+      context: ./Frontend  
+      dockerfile: Dockerfile
+    container_name: chatbot-frontend
+    ports:
+      - "3001:3001" 
+    depends_on:
+      - backend 
+    restart: unless-stopped
+    networks:
+      - chatbot-network
+
+networks:
+  chatbot-network:
+    driver: bridge
