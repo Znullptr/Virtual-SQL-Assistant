@@ -10,7 +10,7 @@ import logging
 from xhtml2pdf import pisa
 import datetime
 from typing import List, Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, File, UploadFile, Depends
+from fastapi import FastAPI, HTTPException, File, UploadFile, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
@@ -451,7 +451,7 @@ class ChatBot:
             
             # List of queries to execute
             queries = [
-                f"SELECT * FROM ORDERS WHERE id = {order_id}",
+                f"SELECT * FROM ORDERS WHERE order_id = {order_id}",
             ]
             
             # Execute all queries
@@ -773,17 +773,22 @@ async def transcribe_audio(file: UploadFile = File(...), whisper_model: Any = De
     temp_path.unlink()
 
     return JSONResponse({"transcription": result.text}, status_code=200)
-@app.get("/generate_chart/")
-async def generate_chart(question: str):
+
+@app.post("/generate_chart/")
+async def generate_chart(request: Request):
     """Generate a chart based on the last query results."""
     try:
+        # Read plain text body
+        question = await request.body()
+        question = question.decode("utf-8").strip()
+
         # Get the last query data
         data = chatbot.last_query_chart_data
-        
+
         if data is None or data.empty:
             return JSONResponse(
                 status_code=400,
-                content={"error": "Insufficient Data to generate un graphique."}
+                content={"error": "Insufficient data to generate a chart."}
             )
                 
         # Generate chart
@@ -794,7 +799,7 @@ async def generate_chart(question: str):
                 status_code=400,
                 content={"error": chart_image}
             )
-                # Return the base64-encoded chart image
+        # Return the base64-encoded chart image
         return JSONResponse(
             status_code=200,
             content={"chart": chart_image}
@@ -808,25 +813,31 @@ async def generate_chart(question: str):
     except Exception as e:
         return JSONResponse(
             status_code=500,
-            content={"error": f"Error generating graphic: {str(e)}"},
+            content={"error": f"Error during chart generation: {str(e)}"}
         )
-   
-@app.get("/generate_pdf/")
-async def generate_pdf(question: str):
-    try:        
-        # Call the generate_pdf method
+
+@app.post("/generate_pdf/")
+async def generate_pdf(request: Request):
+    try:
+        # Read plain text body
+        question = await request.body()
+        question = question.decode("utf-8").strip()
+
+        # Generate PDF
         result = await chatbot.generate_pdf(question)
-        
+
         if "error" in result:
-            return Response(status_code=404, content="An error occured during generating PDF, Verify that order id exists in the database.")
-        
-        # Get PDF bytes from result
+            return Response(
+                status_code=404,
+                content="An error occurred while generating the PDF. Please verify that the order exists in the database."
+            )
+
         pdf_bytes = result["pdf"]
         filename = result["filename"]
-        
-        # Return the PDF as a downloadable file
+
         return Response(
             content=pdf_bytes,
+            status_code=200,
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )

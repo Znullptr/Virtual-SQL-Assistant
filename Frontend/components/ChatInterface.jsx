@@ -160,7 +160,7 @@ const ChatInterface = () => {
       // Add error message
       setMessages(prev => [...prev, { 
         id: Date.now() + 1, 
-        text: "Désolé, je n'ai pas pu traiter ça à cause de cette erreur " + error, 
+        text: "Sorry, I couldn't process this due to this error:" + error, 
         sender: 'assistant',
         error: true,
         timestamp: new Date().toISOString()
@@ -171,40 +171,46 @@ const ChatInterface = () => {
       }
   };
 
-  // New function to generate chart after response is complete
-  const generateChart = async (updatedMessages, botMessage) => {
-    try {
-      const response = await fetch(`${API_URL}/generate_chart/?question=${inputText}`);
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate chart');
-      }
-      
-      const data = await response.json();
-      
-      // Update the existing bot message with chart information
-        botMessage.chartUrl = data.chart,
-        botMessage.text += "\n\n📊 Here is a visualization of the analyzed data:"
-      
-      // Update the messages
-      setMessages([...updatedMessages, botMessage]);
-      
-    } catch (error) {
-      console.error('Error generating chart:', error);
-      // Add error message about chart generation
-      const chartErrorMessage = {
-        id: Date.now(), 
-        text: `Sorry, I couldn't generate the chart: ${error.message}`, 
-        sender: 'assistant',
-        error: true,
-        timestamp: new Date().toISOString()
-      };
-      
-      setMessages(prev => [...prev, chartErrorMessage]);
-    } finally {
-      setIncludeChart(false);
+  // Function to generate chart after response is complete
+  const generateChart = async (updatedMessages, botMessage, question) => {
+  try {
+      const response = await fetch(`${API_URL}/generate_chart/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain'
+        },
+        body: question
+      });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to generate chart');
     }
+    
+    const data = await response.json();
+    
+    // Update the existing bot message with chart information
+    botMessage.chartUrl = data.chart;
+    botMessage.text += "\n\n📊 Here is a visualization of the analyzed data:";
+    
+    // Update the messages
+    setMessages([...updatedMessages, botMessage]);
+    
+  } catch (error) {
+    console.error('Error generating chart:', error);
+    // Add error message about chart generation
+    const chartErrorMessage = {
+      id: Date.now(), 
+      text: `Sorry, I couldn't generate the chart: ${error.message}`, 
+      sender: 'assistant',
+      error: true,
+      timestamp: new Date().toISOString()
+    };
+    
+    setMessages(prev => [...prev, chartErrorMessage]);
+  } finally {
+    setIncludeChart(false);
+  } 
   };
 
   // Send query to API
@@ -267,14 +273,8 @@ const ChatInterface = () => {
 
     // Function to check if user input contains PDF-related keywords
     const containsPdfKeywords = (text) => {
-      const keywords = ["générer", "pdf", "rapport"];
-      const excludedKeywords = ["expédition", "situation"];
-      
-      // Check if any of the excluded words are present in the text
-      if (excludedKeywords.some(keyword => text.toLowerCase().includes(keyword.toLowerCase()))) {
-        return false;
-      }
-    
+      const keywords = ["generate", "pdf", "report"];
+  
       // Check if any of the keywords are present in the text
       return keywords.some(keyword => text.toLowerCase().includes(keyword.toLowerCase()));
     };
@@ -282,16 +282,21 @@ const ChatInterface = () => {
     // Function to generate PDF
     const generatePdf = async (question) => {
       try {
-        const response = await fetch(`${API_URL}/generate_pdf/?question=${encodeURIComponent(question)}`);
-        if (response.status === 404) {
+        const response = await fetch(`${API_URL}/generate_pdf/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/plain'
+          },
+          body: question
+        });
+
+        if (!response.ok) {
           const errorMessage = await response.text();
           throw new Error(errorMessage);
         }
-        if(!response.ok){
-          throw new Error('Failed to generate PDF');
-        }
+
         const blob = await response.blob();
-        return blob
+        return blob;
       } catch (error) {
         console.error('Error generating PDF:', error);
         throw error;
@@ -303,7 +308,7 @@ const ChatInterface = () => {
         const url = window.URL.createObjectURL(pdf);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `rapport-${Date.now()}.pdf`;
+        a.download = `repport-${Date.now()}.pdf`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
