@@ -7,8 +7,8 @@ from sentence_transformers import SentenceTransformer
 from connection_pooling import  DatabaseCursor
 from sklearn.metrics.pairwise import cosine_similarity
 from typing import List, Dict
-from ollama import Client
 from dotenv import load_dotenv
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
 # Load env variables
 load_dotenv()
@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 EXAMPLES_PATH: str = os.environ.get("EXAMPLES_PATH", "Data/examples.json")
 EMBEDDINGS_PATH: str = os.environ.get("EXAMPLES_PATH", "Data/embeddings.npy")
-LLM_HOST: str = "http://"+ os.environ.get("OLLAMA_HOST") + ":" + os.environ.get("OLLAMA_PORT", "11434")
 
 class CosineSimilarityExampleSelector:
     def __init__(self, examples_file, model, embeddings=None, k=3):
@@ -122,9 +121,13 @@ class SqlAgent:
         example_selector.save(EMBEDDINGS_PATH)
 
     def submit_prompt(self) -> str:
-        # Submit prompt to Ollama and get response
-        response = self.client.chat(model=self.model, messages=self.messages)
-        return response['message']['content']
+        # Submit prompt to OpenAI via LangChain and get response
+        try:
+            response = self.client.invoke(self.messages)
+            return response.content
+        except Exception as e:
+            logger.error(f"Error calling OpenAI API: {str(e)}")
+            return None
 
     def get_sql_prompt(self, examples: List[Dict], related_ddl: List[str]) -> str:
         # Generate SQL prompt with context
@@ -146,10 +149,12 @@ class SqlAgent:
         print(similar_questions_sql)
         related_ddl = self.get_related_ddl(similar_questions_sql)
         prompt = self.get_sql_prompt(similar_questions_sql, related_ddl)
+        
+        # Convert to LangChain message format
         if self.messages:
-            self.messages[0]= {"role": "system", "content": prompt}
+            self.messages[0] = SystemMessage(content=prompt)
         else:
-            self.messages = [{"role": "system", "content": prompt}]
+            self.messages = [SystemMessage(content=prompt)]
 
     def clear_messages(self):
         self.messages = []
@@ -158,7 +163,7 @@ class SqlAgent:
         # Generate SQL from a natural language question
         try:
             self.set_system_message(question)
-            self.messages.append({"role": "user", "content": question})
+            self.messages.append(HumanMessage(content=question))
             sql_query = self.submit_prompt()
             return sql_query
         except Exception as e:
@@ -171,9 +176,9 @@ class SqlAgent:
             with DatabaseCursor() as cursor:
                 cursor.execute(sql)
                 result = cursor.fetchall()
-                self.messages.append({"role": "assistant", "content": sql})
+                self.messages.append(AIMessage(content=sql))
                 return [list(row) for row in result]
         except pyodbc.Error as e:
             logger.error(f"Error has occurred while executing SQL Query: {str(e)}")
-            self.messages.append({"role": "assistant", "content": str(e)})
+            self.messages.append(AIMessage(content=str(e)))
             return None

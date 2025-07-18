@@ -1,3 +1,4 @@
+
 import io
 import json
 import re
@@ -24,7 +25,11 @@ from contextlib import asynccontextmanager
 import os
 from functools import lru_cache
 from dotenv import load_dotenv
-from ollama import Client
+from langchain_openai import ChatOpenAI
+from langchain.schema import HumanMessage, SystemMessage, AIMessage
+from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+from langchain.callbacks.base import BaseCallbackHandler
+import openai
 
 # Load env variables
 load_dotenv()
@@ -42,18 +47,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Custom streaming callback handler
+class StreamingCallbackHandler(BaseCallbackHandler):
+    def __init__(self):
+        self.tokens = []
+        
+    def on_llm_new_token(self, token: str, **kwargs) -> None:
+        self.tokens.append(token)
+
 # Configuration class for application settings
 class Settings:
     WHISPER_MODEL: str = os.environ.get("WHISPER_MODEL", "base")
-    LLM_MODEL: str = os.environ.get("LLM_MODEL", "mistral")
+    OPENAI_MODEL: str = os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo")
+    OPENAI_API_KEY: str = os.environ.get("OPENAI_API_KEY")
     MAX_EXCEL_ROWS: int = int(os.environ.get("MAX_EXCEL_ROWS", "10000"))
-    MAX_SAMPLE_ROWS: int = int(os.environ.get("MAX_SAMPLE_ROWS", "8"))
-    MAX_SAMPLE_COLUMNS: int = int(os.environ.get("MAX_SAMPLE_COLUMNS", "6"))
+    MAX_SAMPLE_ROWS: int = int(os.environ.get("MAX_SAMPLE_ROWS", "5"))
+    MAX_SAMPLE_COLUMNS: int = int(os.environ.get("MAX_SAMPLE_COLUMNS", "5"))
     DDL_PATH: str = os.environ.get("DDL_PATH", "Data/ddls.json")
     TEMPLATE_DIR: str = os.environ.get("TEMPLATE_DIR", "templates")
-    LLM_HOST: str = "http://"+ os.environ.get("OLLAMA_HOST", "127.0.0.1" ) + ":" + os.environ.get("OLLAMA_PORT", "11434")
     EXAMPLES_PATH: str = os.environ.get("EXAMPLES_PATH", "Data/examples.json")
     TEMP_DIR: str = os.environ.get("TEMP_DIR", "temp")
+    OPENAI_TEMPERATURE: float = float(os.environ.get("OPENAI_TEMPERATURE", "0.7"))
+    OPENAI_MAX_TOKENS: int = int(os.environ.get("OPENAI_MAX_TOKENS", "1000"))
 
 
 @lru_cache()
@@ -133,8 +148,30 @@ def get_whisper_model():
 class ChatBot:
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.client = Client(host=settings.LLM_HOST)
-        self.llm = SqlAgent(client=self.client, model=settings.LLM_MODEL)
+        
+        # Initialize OpenAI client
+        if not settings.OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY environment variable is required")
+        
+        # Initialize LangChain ChatOpenAI
+        self.llm_client = ChatOpenAI(
+            model=settings.OPENAI_MODEL,
+            temperature=settings.OPENAI_TEMPERATURE,
+            max_tokens=settings.OPENAI_MAX_TOKENS,
+            openai_api_key=settings.OPENAI_API_KEY
+        )
+        
+        # Initialize streaming client for streaming responses
+        self.streaming_client = ChatOpenAI(
+            model=settings.OPENAI_MODEL,
+            temperature=settings.OPENAI_TEMPERATURE,
+            max_tokens=settings.OPENAI_MAX_TOKENS,
+            openai_api_key=settings.OPENAI_API_KEY,
+            streaming=True
+        )
+        
+        # Initialize SQL Agent with OpenAI client
+        self.llm = SqlAgent(client=self.llm_client, model=settings.OPENAI_MODEL)
         self.load_ddl()
         self.last_query_excel_data = None
 
@@ -288,7 +325,7 @@ class ChatBot:
         """Verify SQL query for security."""
         restricted_commands = ["UPDATE", "DELETE", "INSERT", "DROP", "ALTER", "TRUNCATE", "CREATE", "GRANT"]
         if re.search(r"\b(" + "|".join(restricted_commands) + r")\b", sql_query, re.IGNORECASE):
-            raise ValueError("Vous n'avez pas l'autorisation d'exécuter une telle action sur la base de données sélectionnée.")
+            raise ValueError("You don't have permission to execute this query.")
         return sql_query
     
     def query_to_sql(self, question: str) -> tuple:
@@ -304,7 +341,7 @@ class ChatBot:
         except Exception as e:
             logger.error(f"SQL query execution error: {str(e)}")
             logger.error(traceback.format_exc())
-            raise ValueError("Une erreur s'est produite pendant l'exécution de la requête")
+            raise ValueError("An error occurred during SQL query execution.")
         
     async def generate_chart(self, question: str, result: pd.DataFrame) -> str:
         """Generate a chart for corresponding response."""
@@ -317,20 +354,18 @@ class ChatBot:
             
             prompt = self.get_generate_chart_prompt(question, chart_data)
             
-            # Get chart configuration from LLM
-            chart_config_response = self.client.chat(
-                model=self.settings.LLM_MODEL, 
-                messages=[{"role": "user", "content": prompt}],
-            )
+            # Get chart configuration from OpenAI
+            messages = [HumanMessage(content=prompt)]
+            chart_config_response = await self.llm_client.ainvoke(messages)
             
-            chart_config = chart_config_response['message']['content']
+            chart_config = chart_config_response.content
             
             # Parse the chart configuration
             try:
                 chart_type, chart_options = self._parse_chart_config(chart_config)
             except Exception as e:
                 logger.error(f"Error parsing chart configuration: {str(e)}")
-                return "Erreur lors de l'analyse de la configuration du graphique."
+                return "Error parsing chart configuration"
             
             # Generate the chart
             chart_image = self._create_chart(chart_data, chart_type, chart_options)
@@ -340,7 +375,7 @@ class ChatBot:
         except Exception as e:
             logger.error(f"Chart generation error: {str(e)}")
             logger.error(traceback.format_exc())
-            return f"Erreur lors de la génération du graphique: {str(e)}"
+            return f"Error generating chart: {str(e)}"
     
     def plot_pie_chart(self, title: str, result: list) -> str:
         """Generate a pie chart from data."""
@@ -351,7 +386,7 @@ class ChatBot:
             plt.figure(figsize=(8, 8))
             wedges, texts, autotexts = plt.pie(quantities, labels=categories, autopct='%1.1f%%', startangle=140)
             plt.title(title)
-            plt.legend(wedges, categories, title="Catégories Défaut", loc="best")
+            plt.legend(wedges, categories, title="Default Categories", loc="best")
 
             # Save chart to bytes
             image_stream = io.BytesIO()
@@ -399,36 +434,22 @@ class ChatBot:
             return ""
     
     async def generate_pdf(self, question: str) -> Dict[str, Any]:
-        """Generate PDF report from command ID."""
+        """Generate PDF report from order ID."""
         try:
-            # Extract command ID 
-            match = re.search(r"commande\s+(\S+)", question, re.IGNORECASE)
+            # Extract order ID 
+            match = re.search(r"order\s+(\S+)", question, re.IGNORECASE)
             if not match:
-                raise ValueError("Format de commande invalide. Utilisez 'commande [ID]'")
+                raise ValueError("Invalid format. Use 'order [ID]'")
             
-            command_id = match.group(1).strip()
-            logger.info(f"Generating PDF for command ID: {command_id}")
+            order_id = match.group(1).strip()
+            logger.info(f"Generating PDF for order ID: {order_id}")
             
             results = []
             query_columns_list = []
             
             # List of queries to execute
             queries = [
-                f"SELECT [Référence client], Season, PARAMPAGE as Client,Lavage,Modèle,[Désignation Tissu],[Désignation Façonnier] as Façonnier,[Schedulded Export Date] as [Date Export Programmée],[Ligne Soldée] as Soldée from mes_info_de_base_wic where [Référence client] LIKE '{command_id}%'",
-                f"exec PS_TP_Prod @ref='{command_id}'",
-                f"exec PS_Entrée_Par_BL @ref='{command_id}'",
-                f"select ref, size,inseam, count(*) as Qté from A009_Magasin_brut  where ref  like '{command_id}%' and reprise=0 group by ref, size,inseam order by ref, size,inseam",
-                f"exec PS_Consommation_Tissu @ref='{command_id}'",
-                f"SELECT [Réference Client],b.Jalon, CASE WHEN CONVERT(INT,SUM([Qte entrée])-SUM([Qte Sortie])) <0 THEN 0 ELSE CONVERT(INT,SUM([Qte entrée])-SUM([Qte Sortie])) END AS Qté_Encours FROM [WIC$En-tête Transfert Atelier] a LEFT JOIN Jalons_Encours b ON b.ID=a.Avancement WHERE [Réference Client] LIKE '{command_id}%' group by [Réference Client],b.Jalon;",
-                f"SELECT ref as Ref,size as Taille,inseam as Ej, Défaults,Catégorie_default,[type ligne vente],sum(qté) as Qté_2eme from A900_Deuxieme_choix  where ref like '{command_id}%' group by ref,size,inseam, Défaults,Catégorie_default,[type ligne vente]",
-                f"exec PS_Certification @ref='{command_id}'",
-                f"exec [PS_Transfert Entrée-Sortie] @ref='{command_id}'",
-                f"exec PS_Recette @ref='{command_id}'",
-                f"exec PS_Controle_Qualité @ref='{command_id}'",
-                f"exec PS_Mesure_Dimensionnelle @ref='{command_id}'",
-                f"exec PS_Emballage @ref='{command_id}'",
-                f"exec [PS_QD_VS_QEMB] @ref='{command_id}'",
-                f"exec PS_Expédition @ref='{command_id}'"
+                f"SELECT * FROM ORDERS WHERE id = {order_id}",
             ]
             
             # Execute all queries
@@ -440,7 +461,7 @@ class ChatBot:
                         result_data = cursor.fetchall()
                         
                         if not result_data and not results: 
-                            raise ValueError(f"Pas de données trouvées pour la commande {command_id}")
+                            raise ValueError(f"No data found for order {order_id}")
                         
                         # Append results and columns
                         results.append(result_data)
@@ -450,51 +471,14 @@ class ChatBot:
                     # Add empty result to maintain order
                     results.append([])
                     query_columns_list.append([])
-
-            # Calculate statistics
-            Qte_deuxiéme_choix, Qte_entrante, Qte_embalee = 0, 0, 0
             
-            # Calculate second choice quantity
-            if len(results) > 6 and results[6]:
-                for row in results[6]:
-                    Qte_deuxiéme_choix += row[6] if len(row) > 6 else 0
-            
-            # Calculate incoming quantity
-            if len(results) > 2 and results[2]:
-                for row in results[2]:
-                    Qte_entrante += row[2] if len(row) > 2 else 0
-            
-            # Calculate packaged quantity
-            if len(results) > 12 and results[12]:
-                for row in results[12]:
-                    Qte_embalee += row[3] if len(row) > 3 else 0
-            
-            # Generate charts for the report
-            deuxieme_choix_per_default_category = f"SELECT Catégorie_default,sum(qté) as Qté_2eme from A900_Deuxieme_choix where ref like '{command_id}%' group by Catégorie_default;"
-            deuxieme_choix_per_default_category_result = self.llm.execute_sql(deuxieme_choix_per_default_category)
-            pie_chart_categorie_default = self.plot_pie_chart("Répartition du Deuxième Choix par Catégorie Défaut", deuxieme_choix_per_default_category_result)
-            
-            deuxieme_choix_per_default = f"SELECT Défaults,sum(qté) as Qté_2eme from A900_Deuxieme_choix where ref like '{command_id}%' group by Défaults;"
-            deuxieme_choix_per_default_result = self.llm.execute_sql(deuxieme_choix_per_default)
-            pie_chart_default = self.plot_pie_chart("Répartition du Deuxième Choix par Défaut", deuxieme_choix_per_default_result)
-            
-            # Create encours chart if data exists
-            bar_chart_encours = ""
-            if len(results) > 5 and results[5]:
-                bar_chart_encours = self.plot_bar_chart("Répartition des commandes en cours par jalon", 1, 2, "Jalon", "Qté Encours", results[5])        
             
             # Create HTML template for the PDF
             html_content = self._render_template("base_report.html", {
-                "command_id": command_id,
+                "order_id": order_id,
                 "query_columns_list": query_columns_list,
                 "results": results,
-                "Qte_deuxiéme_choix": Qte_deuxiéme_choix,
-                "Qte_entrante": Qte_entrante,
-                "Qte_embalee": Qte_embalee,
-                "pie_chart_categorie_default": f"data:image/png;base64,{pie_chart_categorie_default}" if pie_chart_categorie_default else "",
-                "pie_chart_default": f"data:image/png;base64,{pie_chart_default}" if pie_chart_default else "",
-                "bar_chart_encours": f"data:image/png;base64,{bar_chart_encours}" if bar_chart_encours else "",
-                "current_date": datetime.datetime.now().strftime('%d/%m/%Y à %H:%M')
+                "current_date": datetime.datetime.now().strftime('%d/%m/%Y at %H:%M')
             })
                 
             # Generate PDF from HTML
@@ -502,8 +486,8 @@ class ChatBot:
             
             return {
                 "pdf": pdf,
-                "filename": f"order_{command_id}.pdf",
-                "command_id": command_id
+                "filename": f"order_{order_id}.pdf",
+                "command_id": order_id
             }
         except ValueError as e:
             logger.warning(f"PDF generation validation error: {str(e)}")
@@ -511,7 +495,7 @@ class ChatBot:
         except Exception as e:
             logger.error(f"PDF generation error: {str(e)}")
             logger.error(traceback.format_exc())
-            return {"error": f"Erreur lors de la génération du PDF: {str(e)}"}
+            return {"error": f"PDF generation error: {str(e)}"}
         
     def _render_template(self, template_file: str, context: Dict[str, Any]) -> str:
         """Render HTML template with given context."""
@@ -633,7 +617,7 @@ class ChatBot:
                 df.plot(kind='bar', x=x_column, y=y_column, ax=ax)
             
             # Apply options
-            title = options.get('title', f'Graphique pour: {y_column} par {x_column}')
+            title = options.get('title', f'Chart for: {y_column} by {x_column}')
             ax.set_title(title)
             ax.set_xlabel(options.get('xlabel', x_column))
             ax.set_ylabel(options.get('ylabel', y_column))
@@ -659,30 +643,63 @@ class ChatBot:
         """Process SQL question and stream response."""
         try:
             prompt = self.get_resphrase_sql_answer_prompt(question, columns, result)
-            # Stream response from Ollama
-            response = self.client.chat(model=self.settings.LLM_MODEL, messages=[{"role": "user", "content": prompt}], stream=True)
-            for chunk in response:
-                yield chunk['message']['content']
+            
+            # Create streaming callback
+            callback = StreamingCallbackHandler()
+            
+            # Stream response from OpenAI using LangChain
+            messages = [HumanMessage(content=prompt)]
+            
+            # Use direct OpenAI client for streaming
+            response = await openai.ChatCompletion.acreate(
+                model=self.settings.OPENAI_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=self.settings.OPENAI_TEMPERATURE,
+                max_tokens=self.settings.OPENAI_MAX_TOKENS,
+                stream=True,
+                api_key=self.settings.OPENAI_API_KEY
+            )
+            
+            async for chunk in response:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+                    
         except Exception as e:
             logger.error(f"Error processing SQL question: {e}")
             logger.error(traceback.format_exc())
-            yield f"Erreur: {str(e)}"
-
+            yield f"Error: {str(e)}"
 
     async def process_general_question(self, history):
+        """Process general question and stream response."""
         try:
             prompt = self.get_general_question_answer_prompt()
+            
+            # Convert history to OpenAI format
             messages = [{"role": "system", "content": prompt}]
-            messages.extend(history)
-            # Stream response from Ollama
-            response = self.client.chat(model="mistral", messages=messages, stream=True)
-            for chunk in response:
-                yield chunk['message']['content']
+            for msg in history:
+                messages.append({"role": msg.role, "content": msg.content})
+            
+            # Stream response from OpenAI
+            response = await openai.ChatCompletion.acreate(
+                model=self.settings.OPENAI_MODEL,
+                messages=messages,
+                temperature=self.settings.OPENAI_TEMPERATURE,
+                max_tokens=self.settings.OPENAI_MAX_TOKENS,
+                stream=True,
+                api_key=self.settings.OPENAI_API_KEY
+            )
+            
+            async for chunk in response:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+                    
         except Exception as e:
             logger.error(f"Error processing general question: {e}")
-            yield e
+            logger.error(traceback.format_exc())
+            yield f"Error: {str(e)}"
 
     def clear_messages(self):
+        """Clear message history."""
         self.llm.clear_messages()
 
 
@@ -696,13 +713,15 @@ async def process_query(messages: List[Message]):
     """
     question = messages[-1].content
     if chatbot.is_sql_question(question):
-       result, columns =chatbot.query_to_sql(question)
+       result, columns = chatbot.query_to_sql(question)
        response = chatbot.process_sql_question(question, columns, result)
     else:
         response = chatbot.process_general_question(messages)
+    
     # Set headers based on whether Excel data is included
     headers = {"X-Has-Excel": "true" if chatbot.last_query_excel_data is not None else "false"}
-    # Now return the response as streaming, starting with the first chunk.
+    
+    # Return the response as streaming
     return StreamingResponse(
         response,
         media_type="text/plain",
@@ -752,7 +771,6 @@ async def transcribe_audio(file: UploadFile = File(...), whisper_model: Any = De
     temp_path.unlink()
 
     return JSONResponse({"transcription": result.text}, status_code=200)
-
 @app.get("/generate_chart/")
 async def generate_chart(question: str):
     """Generate a chart based on the last query results."""
@@ -763,7 +781,7 @@ async def generate_chart(question: str):
         if data is None or data.empty:
             return JSONResponse(
                 status_code=400,
-                content={"error": "Données pas suffisantes pour générer un graphique."}
+                content={"error": "Insufficient Data to generate un graphique."}
             )
                 
         # Generate chart
@@ -783,12 +801,12 @@ async def generate_chart(question: str):
     except IndexError:
         return JSONResponse(
             status_code=400,
-            content={"error": "Aucune requête n'a été exécutée."}
+            content={"error": "No query has been executed."}
         )
     except Exception as e:
         return JSONResponse(
             status_code=500,
-            content={"error": f"Erreur lors de la génération du graphique: {str(e)}"}
+            content={"error": f"Error generating graphic: {str(e)}"},
         )
    
 @app.get("/generate_pdf/")
@@ -798,7 +816,7 @@ async def generate_pdf(question: str):
         result = await chatbot.generate_pdf(question)
         
         if "error" in result:
-            return Response(status_code=404, content="Une erreur est survenue lors de géneration de PDF, Veuillez vérifier que la commande existe bien dans la base")
+            return Response(status_code=404, content="An error occured during generating PDF, Verify that order id exists in the database.")
         
         # Get PDF bytes from result
         pdf_bytes = result["pdf"]
