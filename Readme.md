@@ -23,21 +23,22 @@ An intelligent Voice&Text chatbot built with FastAPI and React, converts natural
 ### 3. 🎙️ Voice-to-Text Transcription
 > Transcribe voice recordings into text using OpenAI's Whisper for hands-free chatbot interaction.
 
-![Voice Transcription](images/voice_to_text.png)
+![Voice Transcription](Images/voice_to_text1.png)
+![Voice Transcription](Images/voice_to_text2.png)
 
 ---
 
 ### 4. 📄 PDF Report Generator
 > Generate styled PDF reports for orders or custom data using Jinja2 templates and xhtml2pdf.
 
-![PDF Generation](images/pdf_report.png)
+![PDF Generation](Images/pdf_report.png)
 
 ---
 
 ### 5. 🔁 Custom Model Retraining
 > Upload example question-answer pairs to improve the chatbot's SQL understanding on your specific schema.
 
-![Retraining Model](images/retrain_model.png)
+![Retraining Model](Images/retrain_model.png)
 ## 🛠️ Tech Stack
 
 - **FastAPI** & **Pydantic**
@@ -58,7 +59,12 @@ An intelligent Voice&Text chatbot built with FastAPI and React, converts natural
 - 🗣️ Whisper-based voice transcription
 - 🔁 Retrain chatbot with custom examples
 - 🔌 Built-in streaming response support (OpenAI API)
+  
 ---
 
-1. **Interface graphique** :
+## Contributing
+Contributions are welcome! Please open an issue or submit a pull request with any improvements or bug fixes.
+
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
