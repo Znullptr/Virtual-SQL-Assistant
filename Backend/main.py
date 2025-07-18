@@ -174,6 +174,7 @@ class ChatBot:
         self.llm = SqlAgent(client=self.llm_client, model=settings.OPENAI_MODEL)
         self.load_ddl()
         self.last_query_excel_data = None
+        self.last_query_chart_data = None
 
     def load_ddl(self):
         """Load all DDL schema definitions."""
@@ -194,27 +195,26 @@ class ChatBot:
 
         with DatabaseCursor() as cursor:
             cursor.execute(query)
-            columns = [desc[0] for desc in cursor.description]
-            sample_result = result
-            
-            if len(result) >= 5:
-                # Convert to DataFrame with size limit
-                df = pd.DataFrame(result, columns=columns)
-                if len(df) > self.settings.MAX_EXCEL_ROWS:
-                    logger.warning(f"Query result exceeded max rows ({len(df)}), truncating")
-                    df = df.head(self.settings.MAX_EXCEL_ROWS)
-                self.last_query_excel_data = df
+            columns = [desc[0] for desc in cursor.description]            
+            # Convert to DataFrame with size limit
+            df = pd.DataFrame(result, columns=columns)
+            if len(df) > self.settings.MAX_EXCEL_ROWS:
+                logger.warning(f"Query result exceeded max rows ({len(df)}), truncating")
+                df = df.head(self.settings.MAX_EXCEL_ROWS)
 
-            if len(result) >= self.settings.MAX_SAMPLE_ROWS:
+            sample_result = df
+            if len(result) > self.settings.MAX_SAMPLE_ROWS:
                 # Reduce number of rows for display
-                sample_result = result[:self.settings.MAX_SAMPLE_ROWS]
+                sample_result = sample_result.head(self.settings.MAX_SAMPLE_ROWS)
             
-            if len(columns) >= self.settings.MAX_SAMPLE_COLUMNS:
+            if len(columns) > self.settings.MAX_SAMPLE_COLUMNS:
                 # Reduce number of columns for display
-                columns = columns[:self.settings.MAX_SAMPLE_COLUMNS]
-                sample_result = [row[:self.settings.MAX_SAMPLE_COLUMNS] for row in sample_result]
-            
-            return sample_result, columns
+                sample_result = sample_result.iloc[:, :self.settings.MAX_SAMPLE_COLUMNS]
+
+            self.last_query_chart_data = sample_result
+            if len(df) > len(sample_result):
+                self.last_query_excel_data = df
+            return sample_result
     
     def get_excel_download_data(self) -> Optional[bytes]:
         """Return Excel data as bytes."""
@@ -237,7 +237,7 @@ class ChatBot:
                 return None
         return None
 
-    def get_resphrase_sql_answer_prompt(self, question: str, column_names: list, result: list) -> str:
+    def get_resphrase_sql_answer_prompt(self, question: str, result: list) -> str:
         """Create prompt for SQL answer rephrasing."""
         return f"""
             **You are an SQL Assistant.** Your task is to generate a well-structured and relevant response in **English** based strictly on the provided SQL result.  
@@ -247,17 +247,17 @@ class ChatBot:
             ### **Inputs:** 
 
             User Question: {question}
-            Column Names: {column_names}
             SQL Result:
             {result}
 
             ---
             
             ### **Instructions (Read and Follow Carefully):**  
-            1. **Strictly base your response on the SQL result.** Do NOT generate assumptions, explanations, or additional insights beyond what is provided.  
-            2. **Always respond in English.**  
-            3. You can provide a clear, Concise and direct response OR You may use a table format in your response but it's NOT ALWAYS Needed.
+            1. **Strictly base your response on the SQL result and in english.** 
+            2. **Strictly Do NOT** generate any assumptions or explanations for the user!! Your job is just to provide SQL result and NOTHING ELSE.  
+            3. You can provide a clear, Concise and direct response OR You may use a table format in your response if data needs a tabular format to be shown.
             4. Never try modifying SQL result data neither by adding or removing rows.
+            5. Keep in mind that SQL result passed to you is a sample of the actual data. You should not assume or tell the user anything beyond what is provided in.
             ---
             
             Begin! 
@@ -334,9 +334,8 @@ class ChatBot:
             query = self.llm.generate_sql(question)
             logger.info(f"Generated SQL Query: {query}")
             verified_query = self.verify_sql_query(query)
-            print(verified_query)
-            result, columns = self.execute_query(verified_query)
-            return result, columns
+            result = self.execute_query(verified_query)
+            return result
         
         except Exception as e:
             logger.error(f"SQL query execution error: {str(e)}")
@@ -369,6 +368,9 @@ class ChatBot:
             
             # Generate the chart
             chart_image = self._create_chart(chart_data, chart_type, chart_options)
+            
+            # Clear chart data
+            self.last_query_chart_data = None
             
             return chart_image
             
@@ -639,10 +641,10 @@ class ChatBot:
             logger.error(traceback.format_exc())
             raise
             
-    async def process_sql_question(self, question: str, columns: list, result: list):
+    async def process_sql_question(self, question: str, result: list):
         """Process SQL question and stream response."""
         try:
-            prompt = self.get_resphrase_sql_answer_prompt(question, columns, result)
+            prompt = self.get_resphrase_sql_answer_prompt(question, result)
             
             # Create streaming callback
             callback = StreamingCallbackHandler()
@@ -713,8 +715,8 @@ async def process_query(messages: List[Message]):
     """
     question = messages[-1].content
     if chatbot.is_sql_question(question):
-       result, columns = chatbot.query_to_sql(question)
-       response = chatbot.process_sql_question(question, columns, result)
+       result = chatbot.query_to_sql(question)
+       response = chatbot.process_sql_question(question, result)
     else:
         response = chatbot.process_general_question(messages)
     
@@ -776,7 +778,7 @@ async def generate_chart(question: str):
     """Generate a chart based on the last query results."""
     try:
         # Get the last query data
-        data = chatbot.last_query_excel_data
+        data = chatbot.last_query_chart_data
         
         if data is None or data.empty:
             return JSONResponse(
@@ -787,7 +789,7 @@ async def generate_chart(question: str):
         # Generate chart
         chart_image = await chatbot.generate_chart(question, data)
         
-        if chart_image.startswith("Erreur"):
+        if chart_image.startswith("Error"):
             return JSONResponse(
                 status_code=400,
                 content={"error": chart_image}
@@ -852,7 +854,6 @@ async def retrain_model(file: UploadFile = File(...)):
 
     except Exception as e:
         temp_path.unlink()
-        print(e)
         return Response("Couldn't retrain model on new examples verify your file is in the correct format", status_code=404)
 
     

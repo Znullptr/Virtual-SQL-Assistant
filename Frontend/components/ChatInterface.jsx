@@ -185,7 +185,7 @@ const ChatInterface = () => {
       
       // Update the existing bot message with chart information
         botMessage.chartUrl = data.chart,
-        botMessage.text += "\n\n📊 Voici une visualisation des données analysées:"
+        botMessage.text += "\n\n📊 Here is a visualization of the analyzed data:"
       
       // Update the messages
       setMessages([...updatedMessages, botMessage]);
@@ -195,7 +195,7 @@ const ChatInterface = () => {
       // Add error message about chart generation
       const chartErrorMessage = {
         id: Date.now(), 
-        text: `Désolé, je n'ai pas pu générer le graphique: ${error.message}`, 
+        text: `Sorry, I couldn't generate the chart: ${error.message}`, 
         sender: 'assistant',
         error: true,
         timestamp: new Date().toISOString()
@@ -336,7 +336,7 @@ const ChatInterface = () => {
       setIsRecording(true);
     } catch (error) {
       console.error('Error accessing microphone:', error);
-      alert("Impossible d'accéder au microphone. Veuillez vérifier les autorisations.");
+      alert("Please allow access to microphone.");
     }
   };
 
@@ -435,7 +435,7 @@ const ChatInterface = () => {
       console.error('Error processing audio:', error);
       setMessages(prev => [...prev, { 
         id: Date.now() + 1, 
-        text: "Désolé, je n'ai pas pu traiter l'audio. Veuillez réessayer ou saisir votre message.", 
+        text: "Sorry, I couldn't process the audio. Please try again or type your message instead.", 
         sender: 'assistant',
         error: true,
         timestamp: new Date().toISOString()
@@ -592,21 +592,21 @@ const ChatInterface = () => {
                         <p className="mt-2">
                           {message.text === "" || !message.text 
                             ? "Your report has been successfully generated! You can view it below."
-                            : "This is only a sample of the data. To view the complete results, please refer to the attached Excel file."}
+                            : "Please note that the displayed results are only a sample of the returned data. To view the complete results, please refer to the attached Excel file."}
                         </p>
                           <button
                             onClick={() => downloadExcel(message.excelData)}
                             className="flex items-center space-x-2 bg-white border border-gray-300 px-4 py-2 rounded-lg transition-all duration-200 hover:bg-gray-50 cursor-pointer mr-4 mt-1"
                             aria-label="Télécharger Excel"
                           >
-                            <span className="text-sm font-medium text-gray-700">📥 Télécharger Résultats Excel</span>
+                            <span className="text-sm font-medium text-gray-700">📥 Download Excel Results</span>
                           </button>
                         </>
                       )}
                       {message.sender === "assistant" && message.hasPdf && (
                         <>
                           <p className="mt-2">
-                            {"Un rapport PDF pour votre commande a été généré avec succés, vous pouvez le télecharger et consulter tous ces informations."}
+                            {"A PDF report for your order has been successfully generated. You can download it and view all its information."}
                           </p>
                           <button
                             onClick={() => downloadPdf(message.pdfData)}
@@ -614,7 +614,7 @@ const ChatInterface = () => {
                             aria-label="Télécharger PDF"
                           >
                             <FileDown size={16} className="text-red-600" />
-                            <span className="text-sm font-medium text-red-600">Télécharger le rapport PDF</span>
+                            <span className="text-sm font-medium text-red-600">Download PDF Report</span>
                           </button>
                         </>
                       )}
