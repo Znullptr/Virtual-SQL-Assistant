@@ -61,6 +61,16 @@ An intelligent Voice&Text chatbot built with FastAPI and React, converts natural
 - 🔌 Built-in streaming response support (OpenAI API)
   
 ---
+## 🗄️ Targeted Database
+
+This AI chatbot is currently configured to work with the **`bikesdb`** dataset — a sample **Microsoft SQL Server (MSSQL)** database used for business analytics and reporting.
+
+You can explore and download the `bikesdb` from this link:  
+👉 [Download bikesdb MSSQL Sample DB](https://www.sqlservertutorial.net/getting-started/load-sample-database)
+
+> 💡 **Want to use your own MSSQL database?**  
+Simply replace the `ddls.json` and `examples.json` files located in the `Data/` folder with your own schema and question-answer examples. This will allow the chatbot to understand and interact with your specific database structure.
+---
 
 ## Contributing
 Contributions are welcome! Please open an issue or submit a pull request with any improvements or bug fixes.
