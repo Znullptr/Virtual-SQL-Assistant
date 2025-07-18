@@ -8,15 +8,15 @@ An intelligent Voice&Text chatbot built with FastAPI and React, converts natural
 ### 1. 🧾 Smart Question Answering
 > Get instant answers to general knowledge or business-specific questions using LLMs.
 
-![General Question Answering](images/general_qa.png)
+![General Question Answering](Images/general_qa.png)
 
 ---
 
 ### 2. 🗄️ Database Query Assistant
 > Convert natural language to SQL, execute it on your DB, and/or receive structured responses or downloadable results.
 
-![Database Queries](images/db_queries1.png)
-![Database Queries](images/db_queries2.png)
+![Database Queries](Images/db_queries2.png)
+![Database Queries](Images/db_queries1.png)
 
 ---
 
